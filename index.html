@@ -72,7 +72,7 @@
       { id: 'i1', text: '有刺絲胞', validTargets: ['刺絲胞'], icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> }, 
       { id: 'i2', text: '身體分節、但各節形態不同', validTargets: ['節肢'], icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h12M4 18h8"/></svg> }, 
       { id: 'i3', text: '身體扁平', validTargets: ['扁形'], icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="12" rx="10" ry="3"/></svg> },
-      { id: 'i4', text: '堅硬外殼', validTargets: ['軟體'], icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> }, 
+      { id: 'i4', text: '部分個體有保護身體的硬殼', validTargets: ['軟體'], icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> }, 
       { id: 'i5', text: '身體柔軟', validTargets: ['軟體'], icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12s4-6 8 0 8 6 8 0"/></svg> }, 
       { id: 'i6', text: '分節的附肢', validTargets: ['節肢'], icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 22l4-8-4-8M16 22l-4-8 4-8"/></svg> }, 
       { id: 'i7', text: '外骨骼', validTargets: ['節肢'], icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7h-3V4H7v3H4v10h3v3h10v-3h3V7zM10 7h4v4h-4V7zM10 13h4v4h-4v-4z"/></svg> }, 
@@ -790,7 +790,7 @@
       );
     }
 
-    function ExplorationTab({ theme }) {
+    function ExplorationTab({ theme, autoSave }) {
       const isVert = theme === 'vert';
       const categories = isVert ? VERT_CATEGORIES : INVERT_CATEGORIES;
       const checklist = isVert ? VERT_EXPLORATION_CHECKLIST : INVERT_EXPLORATION_CHECKLIST;
@@ -807,6 +807,13 @@
       const [activeTaskIndex, setActiveTaskIndex] = useState(0);
       const activeTask = currentTasks[activeTaskIndex] || currentTasks[0];
       const themeColor = isVert ? 'blue' : 'amber';
+
+      // 換頁(切換不同動物)時觸發自動存檔
+      useEffect(() => {
+        if (autoSave) {
+          autoSave();
+        }
+      }, [activeTaskIndex]);
 
       // 特殊無脊椎動物類別判斷 (無需拍照與標記)
       const noPhotoCategories = ['刺絲胞', '扁形', '棘皮'];
@@ -1183,12 +1190,18 @@
         setShowProfileModal(true);
       };
 
-      const handleSyncToCloud = async () => {
-        if (!user) { setSyncMessage({ text: '尚未連線至雲端伺服器，請稍候。', type: 'error' }); setTimeout(() => setSyncMessage(null), 3000); return; }
-        if (!teamProfile) { setSyncMessage({ text: '請先完成小組報到！', type: 'error' }); setTimeout(() => setSyncMessage(null), 3000); return; }
+      const handleSyncToCloud = async (isAutoSave = false) => {
+        if (!user || !teamProfile) { 
+            if (!isAutoSave) {
+                setSyncMessage({ text: '目前未與雲端連線，請檢查網路。', type: 'error' }); setTimeout(() => setSyncMessage(null), 3000); 
+            }
+            return; 
+        }
         
-        setIsSyncing(true); 
-        setSyncMessage({ text: '正在將兩大動物區進度上傳至雲端...', type: 'info' });
+        if (!isAutoSave) {
+            setIsSyncing(true); 
+            setSyncMessage({ text: '正在將兩大動物區進度上傳至雲端...', type: 'info' });
+        }
         
         try {
           const getLocal = (key) => { const r = window.localStorage.getItem(key); return (r && r !== "undefined") ? JSON.parse(r) : null; };
@@ -1213,13 +1226,23 @@
             lastUpdated: new Date().toLocaleString('zh-TW')
           });
 
-          setSyncMessage({ text: '🎉 資料同步成功！下課前請記得按登出。', type: 'success' });
+          if (!isAutoSave) setSyncMessage({ text: '🎉 資料同步成功！下課前請記得按登出。', type: 'success' });
         } catch (error) {
-          console.error("同步失敗:", error); setSyncMessage({ text: '同步失敗，請檢查網路狀態。', type: 'error' });
+          console.error("同步失敗:", error); 
+          if (!isAutoSave) setSyncMessage({ text: '同步失敗，請檢查網路狀態。', type: 'error' });
         } finally {
-          setIsSyncing(false); setTimeout(() => setSyncMessage(null), 4000);
+          if (!isAutoSave) {
+              setIsSyncing(false); setTimeout(() => setSyncMessage(null), 4000);
+          }
         }
       };
+
+      // 監聽主題或大頁籤切換時，觸發自動存檔 (Silent save)
+      useEffect(() => {
+        if (user && teamProfile) {
+          handleSyncToCloud(true);
+        }
+      }, [activeTab, currentTheme]);
 
       return (
         <div className={`min-h-screen font-sans text-slate-800 transition-colors duration-500 ${currentTheme === 'invert' ? 'bg-amber-50 selection:bg-amber-200 theme-invert' : 'bg-blue-50 selection:bg-blue-200 theme-vert'}`}>
@@ -1230,8 +1253,8 @@
                 <h3 className="text-xl font-bold text-red-600 mb-2">確定要登出嗎？</h3>
                 <p className="text-slate-600 mb-6 text-sm md:text-base font-bold">這將清空這台平板的暫存資料。<br/>請確認剛剛已經「同步雲端」，否則進度會遺失喔！</p>
                 <div className="flex gap-3">
-                  <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 shadow-sm border border-slate-200">取消</button>
-                  <button onClick={executeLogout} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-sm border border-red-700">確定登出</button>
+                  <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200 shadow-sm border border-slate-200">取消</button>
+                  <button onClick={executeLogout} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 shadow-sm border border-red-700">確定登出</button>
                 </div>
               </div>
             </div>
@@ -1274,7 +1297,7 @@
                       </button>
                     </div>
                   </div>
-                  <button onClick={handleSyncToCloud} disabled={isSyncing} className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold shadow-md transition-all h-full ${isSyncing ? 'bg-slate-400 text-slate-100 cursor-not-allowed border border-slate-500' : 'bg-slate-800 hover:bg-slate-700 text-white hover:-translate-y-1 border border-slate-600'}`}>
+                  <button onClick={() => handleSyncToCloud(false)} disabled={isSyncing} className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold shadow-md transition-all h-full ${isSyncing ? 'bg-slate-400 text-slate-100 cursor-not-allowed border border-slate-500' : 'bg-slate-800 hover:bg-slate-700 text-white hover:-translate-y-1 border border-slate-600'}`}>
                     {isSyncing ? <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>}
                     <span>{isSyncing ? '上傳中...' : '同步雲端'}</span>
                   </button>
@@ -1297,7 +1320,7 @@
               <div className={`absolute top-0 left-0 w-full h-1 ${currentTheme === 'invert' ? 'bg-amber-400' : 'bg-blue-500'}`}></div>
               {activeTab === 'knowledge' && <KnowledgeTab theme={currentTheme} />}
               {activeTab === 'matching' && <MatchingTab theme={currentTheme} />}
-              {activeTab === 'exploration' && <ExplorationTab theme={currentTheme} />}
+              {activeTab === 'exploration' && <ExplorationTab theme={currentTheme} autoSave={() => handleSyncToCloud(true)} />}
               {activeTab === 'quiz' && <QuizTab theme={currentTheme} />}
             </div>
           </main>
